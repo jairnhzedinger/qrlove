@@ -111,13 +111,16 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
   try {
     logger.info('Requisição para /create-checkout-session.', { requestId: req.requestId });
     const { coupleName, planId, startDate } = req.body; // Dados do formulário
+    const rawPromoCode = req.body.promoCode;
+    const promoCode = typeof rawPromoCode === 'string' ? rawPromoCode.trim() : '';
     const photoFile = req.file; // Arquivo da imagem enviada
 
     logger.info('Dados recebidos para criação de sessão.', {
       requestId: req.requestId,
       coupleName,
       planId,
-      startDate
+      startDate,
+      promoCode: promoCode || null
     });
 
     const products = [
@@ -141,8 +144,44 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
     // Criar a URL de sucesso com o coupleName e a hash codificados
     const purchaseLink = `${process.env.BASE_URL}/success/${encodeURIComponent(coupleName)}-${encodeURIComponent(uniqueHash)}`;
 
-    // Criar a sessão no Stripe
-    const session = await stripe.checkout.sessions.create({
+    let promotionCodeId = null;
+    let normalizedPromoCode = '';
+
+    if (promoCode) {
+      try {
+        const promotionCodes = await stripe.promotionCodes.list({
+          code: promoCode,
+          active: true,
+          limit: 1
+        });
+
+        if (!promotionCodes.data.length) {
+          logger.warn('Código promocional inválido ou expirado.', {
+            requestId: req.requestId,
+            promoCode
+          });
+          return res.status(400).json({ error: 'Código promocional inválido ou expirado.' });
+        }
+
+        promotionCodeId = promotionCodes.data[0].id;
+        normalizedPromoCode = promotionCodes.data[0].code;
+
+        logger.info('Código promocional aplicado com sucesso.', {
+          requestId: req.requestId,
+          promotionCodeId,
+          code: normalizedPromoCode
+        });
+      } catch (promoError) {
+        logger.error('Erro ao validar código promocional.', {
+          requestId: req.requestId,
+          promoCode,
+          error: promoError.message
+        });
+        return res.status(500).json({ error: 'Não foi possível validar o código promocional. Tente novamente em instantes.' });
+      }
+    }
+
+    const sessionParams = {
       payment_method_types: ['card', 'boleto'],
       line_items: [{
         price_data: {
@@ -153,6 +192,7 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
         quantity: 1,
       }],
       mode: 'payment',
+      allow_promotion_codes: true,
       success_url: purchaseLink,
       cancel_url: `${process.env.BASE_URL}/`,
       payment_method_options: {
@@ -160,11 +200,27 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
           expires_after_days: 5,
         },
       },
-    });
+      metadata: {
+        requestId: req.requestId,
+      }
+    };
+
+    if (promotionCodeId) {
+      sessionParams.discounts = [{ promotion_code: promotionCodeId }];
+    }
+
+    if (normalizedPromoCode) {
+      sessionParams.metadata.promoCode = normalizedPromoCode;
+    }
+
+    // Criar a sessão no Stripe
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     logger.info('Sessão de checkout criada.', {
       requestId: req.requestId,
-      sessionId: session.id
+      sessionId: session.id,
+      promotionCodeId: promotionCodeId || null,
+      metadata: session.metadata
     });
 
     // Salvar a compra no banco de dados e garantir que o ID da compra seja retornado
