@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A história de <%= coupleName %></title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background: url('/media/bg.png') no-repeat center center fixed;
+      background-size: cover;
+      background-color: rgba(0, 0, 0, 0.5); /* Um fundo transparente por trás da imagem */
+      color: #333;
+      text-align: center;
+      padding: 50px;
+      position: relative;
+    }
+
+    body::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(255, 255, 255, 0.664); /* Camada de opacidade sobre a imagem */
+      z-index: -1; /* Enviar a camada para trás do conteúdo */
+      border-radius: 20px;
+    }
+
+    h1 {
+      color: #ff5e5e;
+      margin-bottom: 20px;
+    }
+
+    .details {
+      font-size: 1.2rem;
+      margin-top: 20px;
+    }
+
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 10px;
+      margin-top: 20px;
+    }
+
+    .countdown {
+      margin-top: 30px;
+      font-size: 1.5rem;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h1>A história de <%= coupleName %>!</h1>
+
+  <!-- Exibição da imagem do casal -->
+  <% if (imageUrl) { %>
+    <img src="<%= imageUrl %>" alt="Foto de <%= coupleName %>">
+  <% } %>
+
+  <!-- Contador de tempo juntos -->
+  <div class="countdown" id="countdown"></div>
+
+  <script>
+    // Defina a data inicial com base nos dados do servidor
+    const startDate = new Date('<%= startDate %>');
+
+    function updateCountdown() {
+      const now = new Date();
+      const elapsed = now - startDate; // Tempo decorrido em milissegundos
+
+      // Calcule anos, meses, dias, horas, minutos e segundos
+      const years = Math.floor(elapsed / (1000 * 60 * 60 * 24 * 365.25));
+      const months = Math.floor((elapsed % (1000 * 60 * 60 * 24 * 365.25)) / (1000 * 60 * 60 * 24 * 30.44));
+      const days = Math.floor((elapsed % (1000 * 60 * 60 * 24 * 30.44)) / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((elapsed % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((elapsed % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((elapsed % (1000 * 60)) / 1000);
+
+      // Atualize o contador na página
+      document.getElementById('countdown').innerHTML = `
+        <h2>Tempo juntos:</h2>
+        <p>${years} anos, ${months} meses, ${days} dias, ${hours} horas, ${minutes} minutos, ${seconds} segundos</p>
+      `;
+    }
+
+    // Atualiza o contador a cada segundo
+    setInterval(updateCountdown, 1000);
+  </script>
+</body>
+</html>

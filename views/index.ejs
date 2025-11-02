@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QRLove</title>
+  
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="Crie uma página personalizada para celebrar seu amor com o QRLove. Adicione fotos, datas importantes e muito mais. Veja quanto tempo estão juntos!">
+  <meta name="robots" content="index, follow">
+  <meta property="og:title" content="QRLove: Celebrando o Amor">
+  <meta property="og:description" content="Adicione fotos, datas importantes e veja quanto tempo estão juntos com o QRLove!">
+  <meta name="keywords" content="amor, casal, QRCode, celebração de amor, tempo juntos">
+
+  <style>
+    /* Estilo global */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #f0f0f0;
+      color: #333;
+    }
+
+    .container {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      max-width: 1000px;
+      margin: 40px auto;
+      padding: 20px;
+      background-color: #fff;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+      border-radius: 15px;
+      gap: 20px;
+    }
+
+    /* Formulário à esquerda */
+    .form-container {
+      width: 48%;
+      background-color: #ffffff;
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Título estilizado */
+    h1 {
+      text-align: center;
+      color: #ff5e5e;
+      font-size: 32px;
+      margin-bottom: 20px;
+    }
+
+    /* Form Styles */
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    input[type="text"],
+    input[type="date"],
+    select,
+    button,
+    label {
+      width: 100%;
+      padding: 14px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+
+    input[type="text"],
+    select {
+      background-color: #f9f9f9;
+      color: #333;
+    }
+
+    /* Estilo do campo de data */
+    input[type="date"] {
+      background-color: #f9f9f9;
+      color: #333;
+      appearance: none; /* Remove o estilo padrão em navegadores */
+      -webkit-appearance: none; /* Remove o estilo padrão no iOS */
+    }
+
+    /* Estilo específico para o campo de data no iOS */
+    input[type="date"]::before {
+      content: attr(placeholder);
+      color: #999;
+    }
+
+    input[type="date"]:focus::before,
+    input[type="date"]:valid::before {
+      content: "";
+    }
+
+    /* Estilo personalizado para o input de foto */
+    input[type="file"] {
+      display: none;
+    }
+
+    .custom-file-upload {
+      display: inline-block;
+      width: 100%;
+      padding: 14px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background-color: #f9f9f9;
+      font-size: 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    .custom-file-upload:hover {
+      background-color: #e6e6e6;
+    }
+
+    /* Botão Comprar */
+    .comprar-btn {
+      background-color: #ff5e5e;
+      color: white;
+      font-size: 18px;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      text-transform: uppercase;
+      margin-top: 20px;
+      width: 100%;
+    }
+
+    .comprar-btn:hover {
+      background-color: #ff3333;
+      box-shadow: 0 4px 12px rgba(255, 51, 51, 0.3);
+    }
+
+    /* Estilização do texto explicativo */
+.explanation {
+  margin-top: 40px;
+  background-color: #ffeded;
+  border-radius: 15px;
+  padding: 20px;
+  text-align: center;
+  box-shadow: 0 4px 10px rgba(255, 51, 51, 0.1);
+}
+
+.explanation h3 {
+  color: #ff5e5e;
+  font-size: 24px;
+  margin-bottom: 15px;
+  font-weight: bold;
+}
+
+.explanation p {
+  font-size: 16px;
+  color: #555;
+  line-height: 1.6;
+  margin-bottom: 15px;
+}
+
+.explanation p:last-child {
+  margin-bottom: 0;
+}
+
+.explanation p strong {
+  color: #ff5e5e;
+}
+
+    /* Estilos para pré-visualização */
+    .preview-container {
+      width: 48%;
+      padding: 20px;
+      background-color: #ff5e5e;
+      color: rgb(255, 255, 255);
+      border-radius: 15px;
+      text-align: center;
+    }
+
+    .preview-container img {
+      border-radius: 10px;
+      max-width: 100%;
+    }
+
+    .countdown {
+      margin-top: 20px;
+      font-size: 1.5rem;
+    }
+
+    /* Responsividade */
+    @media (max-width: 800px) {
+      .explanation {
+    padding: 15px;
+  }
+
+  .explanation h3 {
+    font-size: 22px;
+  }
+
+  .explanation p {
+    font-size: 15px;
+  }
+
+      .container {
+        flex-direction: column;
+      }
+
+      .form-container,
+      .preview-container {
+        width: 100%;
+      }
+
+      .comprar-btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Formulário -->
+    <div class="form-container">
+      <h1>QRLove</h1>
+      <!-- Adicionar o enctype para permitir o envio de arquivos -->
+      <form id="checkout-form" enctype="multipart/form-data">
+        <input type="text" id="couple-name" name="couple-name" placeholder="Nome do casal" required>
+
+        <!-- Estilo customizado para input de arquivo -->
+        <label for="photo" class="custom-file-upload">Escolha uma foto de vocês</label>
+        <input type="file" id="photo" name="photo" accept="image/*" onchange="previewImage(event)" required>
+
+        <!-- Input de data com placeholder -->
+        <input type="date" id="start-date" name="start-date" placeholder="Data de início" required>
+
+        <select id="plan" name="plan">
+          <option value="" disabled selected>Selecione um plano</option>
+          <option value="1">Anual (R$ 19,90)</option>
+          <option value="2">Lifetime (R$ 49,90)</option>
+        </select>
+      </form>      
+    </div>
+
+    <!-- Preview Container -->
+    <div class="preview-container" id="mobile-preview">
+      <h2>A história de </h2>
+      <h2 id="couple-name-preview">*******</h2>
+      <img id="photo-final" src="https://via.placeholder.com/720x1080/ffffff/ff5e5e?text=Foto+de+vocês!">
+      <div class="countdown" id="countdown">0 anos, 0 meses, 0 dias, 0 horas, 0 minutos, 0 segundos</div>
+    </div>
+
+    <!-- Botão Comprar dentro do container, mas fora da preview-container -->
+    <button class="comprar-btn" id="comprar-btn" type="button">Comprar</button>
+
+    <!-- Texto persuasivo e amoroso abaixo do botão de comprar -->
+    <div class="explanation">
+      <h3>QRLove: O Baú Digital Eterno do Seu Amor 💖</h3>
+      <p><strong>QRLove</strong> é mais do que uma simples lembrança – é o baú digital que vai eternizar a sua história de amor 💍✨. Com o plano <strong>Lifetime</strong>, criamos uma imagem única do casal, decorada com um contador que mostra, em tempo real, exatamente quanto tempo vocês estão juntos ⏳💑.</p>
+      <p>Mas não para por aí! Você receberá essa imagem para download, já com um <strong>QR Code integrado</strong> 📲, prontinha para ser impressa e colocada naquele quadro especial que vai brilhar na estante da sala 🖼️🏠. Assim, quando seus amigos e familiares visitarem, eles poderão escanear o QR Code e ver não só a foto de vocês, mas também há quanto tempo estão compartilhando essa incrível jornada de amor! 😍💫</p>
+      <p>O buquê de flores pode murchar 🌹, o champanhe pode acabar 🥂, e aquela viagem de comemoração dos sonhos vai, infelizmente, chegar ao fim 🏖️✈️... Mas a <strong>QRLove</strong> vai estar lá, firme e forte 💪, guardando todas essas memórias para sempre. Porque o amor pode ser eterno – e, no <strong>QRLove</strong>, ele realmente é! 💌</p>
+      <p>E para quem ainda está nos primeiros capítulos dessa história de amor 📖, ou quer algo mais "vamos com calma", temos o plano <strong>Anual</strong> por apenas R$19,90! 😜 Afinal, às vezes o amor pode não durar para sempre, né? 🤷‍♀️ Mas ei, quem sabe daqui a um ano a gente renova, né? 😏 Se tudo der certo e o coração bater ainda mais forte 💓, você pode fazer o upgrade para o <strong>Lifetime</strong>! E se não... bom, tem muitos peixes no mar 🐠, e a <strong>QRLove</strong> estará aqui para a sua próxima grande história! 😉</p>
+    </div>       
+  </div>
+
+  <script src="https://js.stripe.com/v3/"></script>
+  <script>
+    // Variável para armazenar o intervalo do countdown
+    let countdownInterval;
+
+    // Função para mostrar a prévia da imagem
+    function previewImage(event) {
+      const file = event.target.files[0];
+      const photoFinal = document.getElementById('photo-final');
+
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          photoFinal.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    // Função para iniciar o countdown
+    function startCountdown(startDate) {
+      const countdownElement = document.getElementById('countdown');
+      const start = new Date(startDate);
+
+      // Limpar o intervalo anterior para evitar que vários contadores rodem ao mesmo tempo
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+      }
+
+      function updateCountdown() {
+        const now = new Date();
+        const diff = now - start;
+
+        const years = Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25));
+        const months = Math.floor((diff % (1000 * 60 * 60 * 24 * 365.25)) / (1000 * 60 * 60 * 24 * 30.44));
+        const days = Math.floor((diff % (1000 * 60 * 60 * 24 * 30.44)) / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        countdownElement.innerHTML = `${years} anos, ${months} meses, ${days} dias, ${hours} horas, ${minutes} minutos, ${seconds} segundos`;
+      }
+
+      countdownInterval = setInterval(updateCountdown, 1000);
+    }
+
+    // Atualizar nome do casal em tempo real
+    document.getElementById('couple-name').addEventListener('input', (e) => {
+      document.getElementById('couple-name-preview').innerText = e.target.value;
+    });
+
+    // Atualizar o countdown conforme a data de início
+    document.getElementById('start-date').addEventListener('change', (e) => {
+      startCountdown(e.target.value);
+    });
+
+    // Obter a chave pública do backend
+    async function getPublicKey() {
+      const response = await fetch('/config');
+      const data = await response.json();
+      return data.publicKey;
+    }
+
+    // Inicializar Stripe com a chave pública
+    getPublicKey().then(publicKey => {
+      const stripe = Stripe(publicKey);
+
+      // Função para iniciar a sessão de checkout
+      document.getElementById('comprar-btn').addEventListener('click', async () => {
+        const coupleName = document.getElementById('couple-name').value;
+        const planId = document.getElementById('plan').value;
+        const startDate = document.getElementById('start-date').value;
+        const photo = document.getElementById('photo').files[0];
+
+        // Criar o FormData para enviar a imagem e os outros dados
+        const formData = new FormData();
+        formData.append('coupleName', coupleName);
+        formData.append('planId', planId);
+        formData.append('startDate', startDate);
+        formData.append('photo', photo);
+
+        try {
+          const response = await fetch('/create-checkout-session', {
+            method: 'POST',
+            body: formData // Usar FormData para enviar os dados
+          });
+
+          const session = await response.json();
+
+          if (session.id) {
+            // Redirecionar para o checkout do Stripe
+            const { error } = await stripe.redirectToCheckout({ sessionId: session.id });
+            if (error) {
+              console.error('Erro ao redirecionar para o checkout:', error);
+            }
+          } else {
+            console.error('Erro ao criar sessão:', session.error);
+          }
+        } catch (error) {
+          console.error('Erro ao criar sessão de checkout:', error);
+        }
+      });
+    }).catch(error => {
+      console.error('Erro ao obter a chave pública:', error);
+    });
+  </script>
+</body>
+</html>
