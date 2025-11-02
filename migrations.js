@@ -4,9 +4,11 @@ const bcrypt = require('bcrypt');
 
 dotenv.config();
 
-const ADMIN_EMAIL = 'jair.edinger2@live.com';
-const ADMIN_PASSWORD = 'casa2020';
-const BCRYPT_SALT_ROUNDS = 12;
+const DEFAULT_ADMIN_EMAIL = 'jair.edinger2@live.com';
+const DEFAULT_ADMIN_PASSWORD = 'casa2020';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
+const BCRYPT_SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
 
 const tables = [
   `CREATE TABLE IF NOT EXISTS admins (
@@ -69,7 +71,7 @@ async function ensureAdmin(connection) {
     'INSERT INTO admins (email, password_hash, name) VALUES (?, ?, ?)',
     [ADMIN_EMAIL, passwordHash, 'Administrador QRLove']
   );
-  console.info('Administrador padrão criado com sucesso.');
+  console.info(`Administrador padrão criado com sucesso para ${ADMIN_EMAIL}.`);
 }
 
 async function runMigrations() {
