@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QRLove | Dashboard Administrativo</title>
+    <link rel="stylesheet" href="/css/dashboard.css">
+  </head>
+  <body>
+    <% const formatCurrency = value => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); %>
+    <% const formatDate = value => value ? new Date(value).toLocaleDateString('pt-BR') : '—'; %>
+    <% const partnerLookup = partners.reduce((acc, partner) => { acc[partner.id] = partner.name; return acc; }, {}); %>
+    <div class="dashboard-layout">
+      <aside class="sidebar" role="navigation" aria-label="Menu principal">
+        <div>
+          <h1>QRLove</h1>
+          <p>Controle completo da operação.</p>
+        </div>
+        <nav>
+          <a href="#resumo">Visão geral</a>
+          <a href="#partners">Parceiros</a>
+          <a href="#coupons">Cupons</a>
+          <a href="#financeiro">Financeiro</a>
+        </nav>
+        <form action="/dashboard/logout" method="post">
+          <button type="submit" class="logout-button">Encerrar sessão</button>
+        </form>
+      </aside>
+      <main class="main-content" role="main">
+        <header class="header" id="resumo">
+          <h2>Painel administrativo</h2>
+          <% if (currentAdminEmail) { %>
+            <span class="admin-info">Logado como <strong><%= currentAdminEmail %></strong></span>
+          <% } %>
+        </header>
+        <% if (flash) { %>
+          <div class="flash-message <%= flash.type %>">
+            <% if (flash.type === 'success') { %>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 22a10 10 0 1 1 10-10 10.011 10.011 0 0 1-10 10Zm-1.3-6.3-3.4-3.4 1.4-1.4 2 2 4.6-4.6 1.4 1.4Z" /></svg>
+            <% } else { %>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2Zm1 15h-2v-2h2Zm0-4h-2V7h2Z" /></svg>
+            <% } %>
+            <span><%= flash.message %></span>
+          </div>
+        <% } %>
+
+        <section class="metrics-grid" aria-label="Indicadores principais">
+          <article class="metric-card">
+            <h3>Receita acumulada</h3>
+            <span class="value"><%= formatCurrency(metrics.revenue) %></span>
+            <span class="subtext">Somatório das entradas registradas.</span>
+          </article>
+          <article class="metric-card">
+            <h3>Despesas</h3>
+            <span class="value"><%= formatCurrency(metrics.expenses) %></span>
+            <span class="subtext">Total de saídas registradas.</span>
+          </article>
+          <article class="metric-card">
+            <h3>Saldo operacional</h3>
+            <span class="value"><%= formatCurrency(metrics.balance) %></span>
+            <span class="subtext">Receitas menos despesas.</span>
+          </article>
+          <article class="metric-card">
+            <h3>Parceiros ativos</h3>
+            <span class="value"><%= metrics.activePartners %> / <%= metrics.totalPartners %></span>
+            <span class="subtext">Pendentes: <%= metrics.pendingPartners %></span>
+          </article>
+          <article class="metric-card">
+            <h3>Cupons ativos</h3>
+            <span class="value"><%= metrics.activeCoupons %> / <%= metrics.totalCoupons %></span>
+            <span class="subtext">Expiram em 7 dias: <%= metrics.couponsExpiringSoon %></span>
+          </article>
+          <article class="metric-card">
+            <h3>Aproveitamento dos cupons</h3>
+            <span class="value"><%= metrics.couponUsageRate != null ? metrics.couponUsageRate + '%' : '—' %></span>
+            <span class="subtext">Baseado na soma de limites e usos.</span>
+          </article>
+        </section>
+
+        <section class="section" id="partners" aria-labelledby="partners-title">
+          <header>
+            <h3 id="partners-title">Parcerias estratégicas</h3>
+            <span>Cadastre novos parceiros e acompanhe o status de cada relacionamento.</span>
+          </header>
+          <form action="/dashboard/partners" method="post">
+            <div class="form-grid">
+              <label for="partner-name">
+                Nome do parceiro
+                <input type="text" id="partner-name" name="name" placeholder="Ex.: Floricultura Encantos" required>
+              </label>
+              <label for="partner-email">
+                E-mail
+                <input type="email" id="partner-email" name="email" placeholder="contato@parceiro.com">
+              </label>
+              <label for="partner-phone">
+                Telefone/WhatsApp
+                <input type="tel" id="partner-phone" name="phone" placeholder="(11) 99999-0000">
+              </label>
+              <label for="partner-status">
+                Status
+                <select id="partner-status" name="status">
+                  <option value="ativo">Ativo</option>
+                  <option value="pendente" selected>Pendente</option>
+                  <option value="inativo">Inativo</option>
+                </select>
+              </label>
+            </div>
+            <label for="partner-notes">
+              Observações internas
+              <textarea id="partner-notes" name="notes" placeholder="Detalhes sobre comissões, entregas ou próximos passos"></textarea>
+            </label>
+            <div class="form-actions">
+              <button type="submit" class="button">Cadastrar parceiro</button>
+            </div>
+          </form>
+
+          <% if (partners.length === 0) { %>
+            <p class="empty-state">Nenhum parceiro cadastrado até o momento.</p>
+          <% } else { %>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Contato</th>
+                    <th>Status</th>
+                    <th>Observações</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% partners.forEach(partner => { %>
+                    <tr>
+                      <td>
+                        <strong><%= partner.name %></strong><br>
+                        <small>Criado em <%= formatDate(partner.created_at) %></small>
+                      </td>
+                      <td>
+                        <% if (partner.email) { %>
+                          <div><%= partner.email %></div>
+                        <% } %>
+                        <% if (partner.phone) { %>
+                          <div><%= partner.phone %></div>
+                        <% } %>
+                      </td>
+                      <td>
+                        <span class="status-chip <%= partner.status %>"><%= partner.status %></span>
+                      </td>
+                      <td><%= partner.notes || '—' %></td>
+                      <td>
+                        <div class="table-actions">
+                          <form action="/dashboard/partners/<%= partner.id %>/status" method="post">
+                            <select name="status" onchange="this.form.submit()">
+                              <option value="ativo" <%= partner.status === 'ativo' ? 'selected' : '' %>>Ativo</option>
+                              <option value="pendente" <%= partner.status === 'pendente' ? 'selected' : '' %>>Pendente</option>
+                              <option value="inativo" <%= partner.status === 'inativo' ? 'selected' : '' %>>Inativo</option>
+                            </select>
+                          </form>
+                          <form action="/dashboard/partners/<%= partner.id %>/delete" method="post" onsubmit="return confirm('Deseja remover este parceiro?');">
+                            <button type="submit" class="button small danger">Remover</button>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  <% }); %>
+                </tbody>
+              </table>
+            </div>
+          <% } %>
+        </section>
+
+        <section class="section" id="coupons" aria-labelledby="coupons-title">
+          <header>
+            <h3 id="coupons-title">Cupons e campanhas</h3>
+            <span>Planeje incentivos, acompanhe performance e validade.</span>
+          </header>
+          <form action="/dashboard/coupons" method="post">
+            <div class="form-grid">
+              <label for="coupon-code">
+                Código do cupom
+                <input type="text" id="coupon-code" name="code" placeholder="LOVE2025" required>
+              </label>
+              <label for="coupon-type">
+                Tipo de desconto
+                <select id="coupon-type" name="discountType" required>
+                  <option value="percentual" selected>Percentual</option>
+                  <option value="valor_fixo">Valor fixo (R$)</option>
+                </select>
+              </label>
+              <label for="coupon-value">
+                Valor do desconto
+                <input type="number" id="coupon-value" name="discountValue" step="0.01" min="0" required>
+              </label>
+              <label for="coupon-limit">
+                Limite de uso
+                <input type="number" id="coupon-limit" name="usageLimit" min="0" placeholder="Opcional">
+              </label>
+              <label for="coupon-partner">
+                Parceiro associado
+                <select id="coupon-partner" name="partnerId">
+                  <option value="">Nenhum</option>
+                  <% partners.forEach(partner => { %>
+                    <option value="<%= partner.id %>"><%= partner.name %></option>
+                  <% }); %>
+                </select>
+              </label>
+              <label>
+                Ativo
+                <input type="checkbox" name="active" checked>
+              </label>
+            </div>
+            <div class="form-grid">
+              <label for="coupon-start">
+                Início da validade
+                <input type="date" id="coupon-start" name="startDate">
+              </label>
+              <label for="coupon-end">
+                Fim da validade
+                <input type="date" id="coupon-end" name="endDate">
+              </label>
+              <label for="coupon-description" style="grid-column: 1 / -1;">
+                Descrição da campanha
+                <textarea id="coupon-description" name="description" placeholder="Condições, landing pages ou observações internas"></textarea>
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="button">Cadastrar cupom</button>
+            </div>
+          </form>
+
+          <% if (coupons.length === 0) { %>
+            <p class="empty-state">Nenhum cupom cadastrado até o momento.</p>
+          <% } else { %>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Detalhes</th>
+                    <th>Uso</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% coupons.forEach(coupon => { %>
+                    <tr>
+                      <td>
+                        <strong><%= coupon.code %></strong><br>
+                        <small>Criado em <%= formatDate(coupon.created_at) %></small>
+                      </td>
+                      <td>
+                        <div><strong>Tipo:</strong> <%= coupon.discount_type === 'valor_fixo' ? 'Valor fixo' : 'Percentual' %></div>
+                        <div><strong>Valor:</strong> <%= coupon.discount_type === 'valor_fixo' ? formatCurrency(coupon.discount_value) : coupon.discount_value + '%' %></div>
+                        <div><strong>Validade:</strong> <%= formatDate(coupon.start_date) %> até <%= formatDate(coupon.end_date) %></div>
+                        <div><strong>Parceiro:</strong> <%= coupon.partner_id ? (partnerLookup[coupon.partner_id] || '—') : '—' %></div>
+                        <% if (coupon.description) { %>
+                          <div><strong>Notas:</strong> <%= coupon.description %></div>
+                        <% } %>
+                      </td>
+                      <td>
+                        <div><strong>Utilizações:</strong> <%= coupon.used_count || 0 %></div>
+                        <div><strong>Limite:</strong> <%= coupon.usage_limit || 'Sem limite' %></div>
+                      </td>
+                      <td>
+                        <span class="status-chip <%= coupon.active === 1 ? 'ativo' : 'inativo' %>">
+                          <%= coupon.active === 1 ? 'ativo' : 'inativo' %>
+                        </span>
+                      </td>
+                      <td>
+                        <div class="table-actions">
+                          <form action="/dashboard/coupons/<%= coupon.id %>/toggle" method="post">
+                            <button type="submit" class="button small"><%= coupon.active === 1 ? 'Desativar' : 'Ativar' %></button>
+                          </form>
+                          <form action="/dashboard/coupons/<%= coupon.id %>/delete" method="post" onsubmit="return confirm('Deseja remover este cupom?');">
+                            <button type="submit" class="button small danger">Remover</button>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  <% }); %>
+                </tbody>
+              </table>
+            </div>
+          <% } %>
+        </section>
+
+        <section class="section" id="financeiro" aria-labelledby="finance-title">
+          <header>
+            <h3 id="finance-title">Controle financeiro</h3>
+            <span>Registre entradas e saídas para monitorar a saúde do negócio.</span>
+          </header>
+          <form action="/dashboard/transactions" method="post">
+            <div class="form-grid">
+              <label for="transaction-type">
+                Tipo de movimentação
+                <select id="transaction-type" name="transactionType" required>
+                  <option value="entrada" selected>Entrada</option>
+                  <option value="saida">Saída</option>
+                </select>
+              </label>
+              <label for="transaction-amount">
+                Valor
+                <input type="number" id="transaction-amount" name="amount" step="0.01" min="0" required>
+              </label>
+              <label for="transaction-date">
+                Data
+                <input type="date" id="transaction-date" name="occurredAt" value="<%= new Date().toISOString().slice(0, 10) %>">
+              </label>
+              <label for="transaction-reference">
+                Referência
+                <input type="text" id="transaction-reference" name="reference" placeholder="Ex.: #12345 / Stripe">
+              </label>
+            </div>
+            <label for="transaction-description">
+              Descrição detalhada
+              <textarea id="transaction-description" name="description" placeholder="Origem, centro de custo, comissão, etc."></textarea>
+            </label>
+            <div class="form-actions">
+              <button type="submit" class="button">Registrar movimentação</button>
+            </div>
+          </form>
+
+          <% if (transactions.length === 0) { %>
+            <p class="empty-state">Nenhuma transação registrada até o momento.</p>
+          <% } else { %>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Tipo</th>
+                    <th>Valor</th>
+                    <th>Descrição</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% transactions.forEach(transaction => { %>
+                    <tr>
+                      <td><%= formatDate(transaction.occurred_at) %></td>
+                      <td>
+                        <span class="status-chip <%= transaction.transaction_type === 'entrada' ? 'ativo' : 'inativo' %>">
+                          <%= transaction.transaction_type %>
+                        </span>
+                      </td>
+                      <td><%= formatCurrency(transaction.amount) %></td>
+                      <td>
+                        <div><%= transaction.description || '—' %></div>
+                        <% if (transaction.reference) { %>
+                          <small>Ref.: <%= transaction.reference %></small>
+                        <% } %>
+                      </td>
+                      <td>
+                        <form action="/dashboard/transactions/<%= transaction.id %>/delete" method="post" onsubmit="return confirm('Deseja remover esta movimentação?');">
+                          <button type="submit" class="button small danger">Remover</button>
+                        </form>
+                      </td>
+                    </tr>
+                  <% }); %>
+                </tbody>
+              </table>
+            </div>
+          <% } %>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
