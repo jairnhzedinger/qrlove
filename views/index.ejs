@@ -156,6 +156,13 @@
       font-size: 0.95rem;
     }
 
+    .optional-tag {
+      font-weight: 500;
+      color: #8a7575;
+      font-size: 0.85rem;
+      margin-left: 6px;
+    }
+
     input[type="text"],
     input[type="date"],
     select {
@@ -745,6 +752,20 @@
             </ul>
           </div>
 
+          <div>
+            <label for="promo-code">Possui código promocional? <span class="optional-tag">(opcional)</span></label>
+            <input
+              type="text"
+              id="promo-code"
+              name="promo-code"
+              inputmode="text"
+              autocomplete="off"
+              placeholder="Ex.: AMOR10"
+              aria-describedby="promo-code-hint"
+            >
+            <p class="field-hint" id="promo-code-hint">Ao validar, o desconto é aplicado automaticamente no checkout.</p>
+          </div>
+
           <div class="form-actions">
             <p class="form-feedback" id="form-feedback" role="status" aria-live="polite"></p>
             <button class="comprar-btn" id="comprar-btn" type="submit">Garantir meu QRLove</button>
@@ -983,6 +1004,14 @@
       const form = document.getElementById('checkout-form');
       const button = document.getElementById('comprar-btn');
       const feedback = document.getElementById('form-feedback');
+      const promoCodeInput = document.getElementById('promo-code');
+
+      const showFeedback = (message) => {
+        feedback.textContent = message;
+        if (!feedback.classList.contains('is-visible')) {
+          feedback.classList.add('is-visible');
+        }
+      };
 
       form.addEventListener('input', () => {
         if (!button.disabled && feedback.classList.contains('is-visible')) {
@@ -999,15 +1028,14 @@
         const startDate = document.getElementById('start-date').value;
         const photoInput = document.getElementById('photo');
         const photo = photoInput.files[0];
+        const promoCode = promoCodeInput ? promoCodeInput.value.trim() : '';
 
         if (!coupleName || !planId || !startDate || !photo) {
-          feedback.textContent = 'Por favor, preencha todos os campos e selecione uma foto antes de continuar.';
-          feedback.classList.add('is-visible');
+          showFeedback('Por favor, preencha todos os campos e selecione uma foto antes de continuar.');
           return;
         }
 
-        feedback.textContent = 'Preparando o checkout seguro…';
-        feedback.classList.add('is-visible');
+        showFeedback('Preparando o checkout seguro…');
         button.disabled = true;
         button.textContent = 'Carregando…';
 
@@ -1016,6 +1044,9 @@
         formData.append('planId', planId);
         formData.append('startDate', startDate);
         formData.append('photo', photo);
+        if (promoCode) {
+          formData.append('promoCode', promoCode);
+        }
 
         try {
           const response = await fetch('/create-checkout-session', {
@@ -1023,21 +1054,32 @@
             body: formData
           });
 
-          const session = await response.json();
+          let session = {};
+          try {
+            session = await response.json();
+          } catch (parseError) {
+            console.error('Não foi possível interpretar a resposta do servidor.', parseError);
+          }
+
+          if (!response.ok) {
+            const errorMessage = session.error || 'Não foi possível criar a sessão de pagamento. Verifique os dados informados e tente novamente.';
+            showFeedback(errorMessage);
+            return;
+          }
 
           if (session.id) {
             const { error } = await stripe.redirectToCheckout({ sessionId: session.id });
             if (error) {
               console.error('Erro ao redirecionar para o checkout:', error);
-              feedback.textContent = 'Não foi possível abrir o checkout do Stripe. Tente novamente em instantes.';
+              showFeedback('Não foi possível abrir o checkout do Stripe. Tente novamente em instantes.');
             }
           } else {
             console.error('Erro ao criar sessão:', session.error);
-            feedback.textContent = session.error || 'Houve um problema ao criar a sessão. Revise os dados e tente novamente.';
+            showFeedback(session.error || 'Houve um problema ao criar a sessão. Revise os dados e tente novamente.');
           }
         } catch (error) {
           console.error('Erro ao criar sessão de checkout:', error);
-          feedback.textContent = 'Não conseguimos completar o pedido agora. Verifique sua conexão ou tente mais tarde.';
+          showFeedback('Não conseguimos completar o pedido agora. Verifique sua conexão ou tente mais tarde.');
         } finally {
           button.disabled = false;
           button.textContent = 'Garantir meu QRLove';
