@@ -7,6 +7,8 @@ const multer = require('multer'); // Biblioteca para upload de arquivos
 const bodyParser = require('body-parser');
 const QRCode = require('qrcode'); // Biblioteca para gerar QR Codes
 const sharp = require('sharp'); // Biblioteca para manipulação de imagens
+const session = require('express-session');
+const bcrypt = require('bcrypt');
 const db = require('./db'); // Importar o módulo db.js
 const logger = require('./logger');
 
@@ -54,6 +56,43 @@ app.use((req, res, next) => {
   return jsonParser(req, res, next);
 });
 
+app.use(bodyParser.urlencoded({ extended: true, limit: '1mb' }));
+
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'qrlove-dashboard-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    maxAge: 1000 * 60 * 60 * 4
+  }
+}));
+
+const setFlash = (req, type, message) => {
+  req.session.flash = { type, message };
+};
+
+const requireAuth = (req, res, next) => {
+  if (req.session && req.session.adminId) {
+    return next();
+  }
+
+  if (req.path === '/dashboard') {
+    logger.warn('Acesso ao dashboard sem autenticação.', { requestId: req.requestId });
+  }
+
+  return res.redirect('/dashboard/login');
+};
+
+app.use((req, res, next) => {
+  res.locals.currentAdminEmail = req.session && req.session.adminEmail ? req.session.adminEmail : null;
+  res.locals.flash = req.session && req.session.flash ? req.session.flash : null;
+  if (req.session && req.session.flash) {
+    delete req.session.flash;
+  }
+  next();
+});
+
 // Configurações
 app.use(express.static(path.join(__dirname, 'public'))); // Servir arquivos estáticos (CSS, imagens)
 app.set('view engine', 'ejs'); // Configurar EJS como engine de templates
@@ -76,6 +115,59 @@ app.get('/config', (req, res) => {
 // Função para gerar uma hash única
 function generateUniqueHash() {
   return crypto.randomBytes(16).toString('hex');
+}
+
+async function loadDashboardData() {
+  const [partners, coupons, transactions] = await Promise.all([
+    db.queryRecords('partners'),
+    db.queryRecords('coupons'),
+    db.queryRecords('financial_transactions')
+  ]);
+
+  const revenue = transactions
+    .filter(transaction => transaction.transaction_type === 'entrada')
+    .reduce((total, transaction) => total + Number(transaction.amount), 0);
+  const expenses = transactions
+    .filter(transaction => transaction.transaction_type === 'saida')
+    .reduce((total, transaction) => total + Number(transaction.amount), 0);
+
+  const now = new Date();
+  const nextWeek = new Date();
+  nextWeek.setDate(now.getDate() + 7);
+
+  const activeCoupons = coupons.filter(coupon => coupon.active === 1);
+  const expiringCoupons = coupons.filter(coupon => {
+    if (!coupon.end_date) {
+      return false;
+    }
+
+    const endDate = new Date(coupon.end_date);
+    return endDate >= now && endDate <= nextWeek;
+  });
+
+  const totalCouponUsage = coupons.reduce((accumulator, coupon) => accumulator + (coupon.used_count || 0), 0);
+  const totalCouponLimit = coupons.reduce((accumulator, coupon) => accumulator + (coupon.usage_limit || 0), 0);
+  const usageRate = totalCouponLimit > 0 ? Math.round((totalCouponUsage / totalCouponLimit) * 100) : null;
+
+  const metrics = {
+    totalPartners: partners.length,
+    activePartners: partners.filter(partner => partner.status === 'ativo').length,
+    pendingPartners: partners.filter(partner => partner.status === 'pendente').length,
+    totalCoupons: coupons.length,
+    activeCoupons: activeCoupons.length,
+    couponsExpiringSoon: expiringCoupons.length,
+    couponUsageRate: usageRate,
+    revenue,
+    expenses,
+    balance: revenue - expenses
+  };
+
+  return {
+    partners,
+    coupons,
+    transactions,
+    metrics
+  };
 }
 
 // Configuração do multer para salvar as imagens no diretório public/media
@@ -104,6 +196,267 @@ app.get('/', (req, res) => {
     });
     res.status(500).send("Erro ao carregar a página.");
   }
+});
+
+app.get('/dashboard/login', (req, res) => {
+  if (req.session && req.session.adminId) {
+    return res.redirect('/dashboard');
+  }
+
+  res.render('dashboard/login');
+});
+
+app.post('/dashboard/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    setFlash(req, 'error', 'Informe e-mail e senha.');
+    return res.redirect('/dashboard/login');
+  }
+
+  try {
+    const admin = await db.getRecord('admins', { email });
+
+    if (!admin) {
+      setFlash(req, 'error', 'Credenciais inválidas.');
+      logger.warn('Tentativa de login com usuário inexistente.', { email });
+      return res.redirect('/dashboard/login');
+    }
+
+    const passwordValid = await bcrypt.compare(password, admin.password_hash);
+
+    if (!passwordValid) {
+      setFlash(req, 'error', 'Credenciais inválidas.');
+      logger.warn('Senha inválida informada no login.', { email });
+      return res.redirect('/dashboard/login');
+    }
+
+    req.session.adminId = admin.id;
+    req.session.adminEmail = admin.email;
+    setFlash(req, 'success', 'Login realizado com sucesso.');
+    logger.info('Admin autenticado com sucesso.', { email });
+    return res.redirect('/dashboard');
+  } catch (error) {
+    logger.error('Erro ao realizar login.', { error: error.message, email });
+    setFlash(req, 'error', 'Não foi possível realizar o login. Tente novamente.');
+    return res.redirect('/dashboard/login');
+  }
+});
+
+app.post('/dashboard/logout', requireAuth, (req, res) => {
+  req.session.destroy(error => {
+    if (error) {
+      logger.error('Erro ao encerrar sessão do admin.', { error: error.message });
+    }
+    res.clearCookie('connect.sid');
+    res.redirect('/dashboard/login');
+  });
+});
+
+app.get('/dashboard', requireAuth, async (req, res) => {
+  try {
+    const data = await loadDashboardData();
+    res.render('dashboard/index', data);
+  } catch (error) {
+    logger.error('Erro ao carregar dashboard.', { error: error.message });
+    setFlash(req, 'error', 'Não foi possível carregar o dashboard.');
+    res.redirect('/');
+  }
+});
+
+app.post('/dashboard/partners', requireAuth, async (req, res) => {
+  const { name, email, phone, status, notes } = req.body;
+
+  if (!name) {
+    setFlash(req, 'error', 'Informe o nome do parceiro.');
+    return res.redirect('/dashboard');
+  }
+
+  const allowedStatus = ['ativo', 'inativo', 'pendente'];
+  const normalizedStatus = allowedStatus.includes(status) ? status : 'pendente';
+
+  try {
+    await db.createRecord('partners', {
+      name: name.trim(),
+      email: email ? email.trim() : null,
+      phone: phone ? phone.trim() : null,
+      status: normalizedStatus,
+      notes: notes || null
+    });
+    setFlash(req, 'success', 'Parceiro cadastrado com sucesso.');
+  } catch (error) {
+    logger.error('Erro ao cadastrar parceiro.', { error: error.message });
+    setFlash(req, 'error', 'Não foi possível cadastrar o parceiro.');
+  }
+
+  res.redirect('/dashboard');
+});
+
+app.post('/dashboard/partners/:id/status', requireAuth, async (req, res) => {
+  const { status } = req.body;
+  const allowedStatus = ['ativo', 'inativo', 'pendente'];
+  const partnerId = Number(req.params.id);
+
+  if (!allowedStatus.includes(status)) {
+    setFlash(req, 'error', 'Status inválido informado.');
+    return res.redirect('/dashboard');
+  }
+
+  try {
+    await db.updateRecord('partners', { status }, partnerId);
+    setFlash(req, 'success', 'Status do parceiro atualizado.');
+  } catch (error) {
+    logger.error('Erro ao atualizar status do parceiro.', { error: error.message, partnerId });
+    setFlash(req, 'error', 'Não foi possível atualizar o status.');
+  }
+
+  res.redirect('/dashboard');
+});
+
+app.post('/dashboard/partners/:id/delete', requireAuth, async (req, res) => {
+  const partnerId = Number(req.params.id);
+
+  try {
+    await db.deleteRecord('partners', partnerId);
+    setFlash(req, 'success', 'Parceiro removido com sucesso.');
+  } catch (error) {
+    logger.error('Erro ao remover parceiro.', { error: error.message, partnerId });
+    setFlash(req, 'error', 'Não foi possível remover o parceiro.');
+  }
+
+  res.redirect('/dashboard');
+});
+
+app.post('/dashboard/coupons', requireAuth, async (req, res) => {
+  const {
+    code,
+    description,
+    discountType,
+    discountValue,
+    usageLimit,
+    startDate,
+    endDate,
+    partnerId,
+    active
+  } = req.body;
+
+  if (!code || !discountValue || !discountType) {
+    setFlash(req, 'error', 'Preencha código, tipo e valor do desconto.');
+    return res.redirect('/dashboard');
+  }
+
+  const parsedDiscountValue = Number.parseFloat(discountValue);
+  if (Number.isNaN(parsedDiscountValue) || parsedDiscountValue <= 0) {
+    setFlash(req, 'error', 'Valor de desconto inválido.');
+    return res.redirect('/dashboard');
+  }
+
+  const normalizedType = discountType === 'valor_fixo' ? 'valor_fixo' : 'percentual';
+  const parsedUsageLimit = usageLimit ? Number.parseInt(usageLimit, 10) : null;
+  const normalizedPartnerId = partnerId ? Number.parseInt(partnerId, 10) || null : null;
+  const isActive = active === 'on' ? 1 : 0;
+
+  try {
+    await db.createRecord('coupons', {
+      code: code.trim().toUpperCase(),
+      description: description || null,
+      discount_type: normalizedType,
+      discount_value: parsedDiscountValue,
+      usage_limit: parsedUsageLimit,
+      used_count: 0,
+      start_date: startDate || null,
+      end_date: endDate || null,
+      active: isActive,
+      partner_id: normalizedPartnerId
+    });
+    setFlash(req, 'success', 'Cupom cadastrado com sucesso.');
+  } catch (error) {
+    logger.error('Erro ao cadastrar cupom.', { error: error.message });
+    setFlash(req, 'error', 'Não foi possível cadastrar o cupom.');
+  }
+
+  res.redirect('/dashboard');
+});
+
+app.post('/dashboard/coupons/:id/toggle', requireAuth, async (req, res) => {
+  const couponId = Number(req.params.id);
+
+  try {
+    const coupon = await db.getRecord('coupons', { id: couponId });
+
+    if (!coupon) {
+      setFlash(req, 'error', 'Cupom não encontrado.');
+      return res.redirect('/dashboard');
+    }
+
+    const newStatus = coupon.active === 1 ? 0 : 1;
+    await db.updateRecord('coupons', { active: newStatus }, couponId);
+    setFlash(req, 'success', `Cupom ${newStatus === 1 ? 'ativado' : 'desativado'} com sucesso.`);
+  } catch (error) {
+    logger.error('Erro ao atualizar status do cupom.', { error: error.message, couponId });
+    setFlash(req, 'error', 'Não foi possível atualizar o cupom.');
+  }
+
+  res.redirect('/dashboard');
+});
+
+app.post('/dashboard/coupons/:id/delete', requireAuth, async (req, res) => {
+  const couponId = Number(req.params.id);
+
+  try {
+    await db.deleteRecord('coupons', couponId);
+    setFlash(req, 'success', 'Cupom removido com sucesso.');
+  } catch (error) {
+    logger.error('Erro ao remover cupom.', { error: error.message, couponId });
+    setFlash(req, 'error', 'Não foi possível remover o cupom.');
+  }
+
+  res.redirect('/dashboard');
+});
+
+app.post('/dashboard/transactions', requireAuth, async (req, res) => {
+  const { transactionType, amount, occurredAt, description, reference } = req.body;
+
+  if (!transactionType || !['entrada', 'saida'].includes(transactionType)) {
+    setFlash(req, 'error', 'Tipo de transação inválido.');
+    return res.redirect('/dashboard');
+  }
+
+  const parsedAmount = Number.parseFloat(amount);
+  if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+    setFlash(req, 'error', 'Informe um valor válido para a transação.');
+    return res.redirect('/dashboard');
+  }
+
+  try {
+    await db.createRecord('financial_transactions', {
+      transaction_type: transactionType,
+      amount: parsedAmount,
+      description: description || null,
+      reference: reference || null,
+      occurred_at: occurredAt || new Date().toISOString().slice(0, 10)
+    });
+    setFlash(req, 'success', 'Transação registrada com sucesso.');
+  } catch (error) {
+    logger.error('Erro ao registrar transação financeira.', { error: error.message });
+    setFlash(req, 'error', 'Não foi possível registrar a transação.');
+  }
+
+  res.redirect('/dashboard');
+});
+
+app.post('/dashboard/transactions/:id/delete', requireAuth, async (req, res) => {
+  const transactionId = Number(req.params.id);
+
+  try {
+    await db.deleteRecord('financial_transactions', transactionId);
+    setFlash(req, 'success', 'Transação removida com sucesso.');
+  } catch (error) {
+    logger.error('Erro ao remover transação financeira.', { error: error.message, transactionId });
+    setFlash(req, 'error', 'Não foi possível remover a transação.');
+  }
+
+  res.redirect('/dashboard');
 });
 
 // Endpoint de criação de sessão de checkout, incluindo upload da imagem
