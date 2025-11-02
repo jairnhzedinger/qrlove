@@ -466,6 +466,7 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
     const { coupleName, planId, startDate } = req.body; // Dados do formulário
     const rawPromoCode = req.body.promoCode;
     const promoCode = typeof rawPromoCode === 'string' ? rawPromoCode.trim() : '';
+    const normalizedInputCode = promoCode ? promoCode.toUpperCase() : '';
     const photoFile = req.file; // Arquivo da imagem enviada
 
     logger.info('Dados recebidos para criação de sessão.', {
@@ -499,38 +500,143 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
 
     let promotionCodeId = null;
     let normalizedPromoCode = '';
+    let appliedDiscountCents = 0;
+    let discountMetadata = null;
+    let unitAmount = product.price;
 
     if (promoCode) {
-      try {
-        const promotionCodes = await stripe.promotionCodes.list({
-          code: promoCode,
-          active: true,
-          limit: 1
-        });
+      let localCoupon = null;
 
-        if (!promotionCodes.data.length) {
+      try {
+        localCoupon = await db.getRecord('coupons', { code: normalizedInputCode });
+      } catch (couponLookupError) {
+        logger.error('Erro ao consultar cupom local.', {
+          requestId: req.requestId,
+          promoCode,
+          error: couponLookupError.message
+        });
+        return res.status(500).json({ error: 'Não foi possível validar o código promocional. Tente novamente em instantes.' });
+      }
+
+      if (localCoupon) {
+        const parseDateOnly = (value) => {
+          if (!value) {
+            return null;
+          }
+
+          if (value instanceof Date) {
+            return new Date(value.getTime());
+          }
+
+          const isoValue = typeof value === 'string' && value.length === 10 ? `${value}T00:00:00Z` : value;
+          const parsed = new Date(isoValue);
+          return Number.isNaN(parsed.getTime()) ? null : parsed;
+        };
+
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+        const startDateLimit = parseDateOnly(localCoupon.start_date);
+        const endDateLimit = parseDateOnly(localCoupon.end_date);
+        const discountValue = Number(localCoupon.discount_value);
+        const usageLimit = localCoupon.usage_limit;
+        const usedCount = localCoupon.used_count || 0;
+
+        const isInactive = localCoupon.active !== 1;
+        const isBeforeStart = startDateLimit && startDateLimit > today;
+        const isAfterEnd = endDateLimit && endDateLimit < today;
+        const exceededUsage = usageLimit !== null && usageLimit !== undefined && usedCount >= usageLimit;
+        const invalidDiscountValue = Number.isNaN(discountValue) || discountValue <= 0;
+
+        if (isInactive || isBeforeStart || isAfterEnd || exceededUsage || invalidDiscountValue) {
           logger.warn('Código promocional inválido ou expirado.', {
             requestId: req.requestId,
-            promoCode
+            promoCode,
+            couponId: localCoupon.id,
+            reasons: {
+              isInactive,
+              isBeforeStart,
+              isAfterEnd,
+              exceededUsage,
+              invalidDiscountValue
+            }
           });
           return res.status(400).json({ error: 'Código promocional inválido ou expirado.' });
         }
 
-        promotionCodeId = promotionCodes.data[0].id;
-        normalizedPromoCode = promotionCodes.data[0].code;
+        if (localCoupon.discount_type === 'percentual') {
+          appliedDiscountCents = Math.round(product.price * (discountValue / 100));
+        } else {
+          appliedDiscountCents = Math.round(discountValue * 100);
+        }
 
-        logger.info('Código promocional aplicado com sucesso.', {
+        if (appliedDiscountCents <= 0) {
+          logger.warn('Valor de desconto calculado é inválido.', {
+            requestId: req.requestId,
+            promoCode,
+            couponId: localCoupon.id,
+            discountValue
+          });
+          return res.status(400).json({ error: 'Código promocional inválido ou expirado.' });
+        }
+
+        if (appliedDiscountCents >= product.price) {
+          logger.warn('Desconto excede o valor do plano.', {
+            requestId: req.requestId,
+            promoCode,
+            couponId: localCoupon.id,
+            appliedDiscountCents,
+            productPrice: product.price
+          });
+          return res.status(400).json({ error: 'O desconto aplicado excede o valor do plano selecionado.' });
+        }
+
+        unitAmount = product.price - appliedDiscountCents;
+        normalizedPromoCode = normalizedInputCode;
+        discountMetadata = {
+          couponId: String(localCoupon.id),
+          discountType: localCoupon.discount_type,
+          discountValue: discountValue.toString(),
+          discountAppliedInCents: String(appliedDiscountCents)
+        };
+
+        logger.info('Cupom interno aplicado com sucesso.', {
           requestId: req.requestId,
-          promotionCodeId,
-          code: normalizedPromoCode
+          couponId: localCoupon.id,
+          code: normalizedPromoCode,
+          discountAppliedInCents: appliedDiscountCents
         });
-      } catch (promoError) {
-        logger.error('Erro ao validar código promocional.', {
-          requestId: req.requestId,
-          promoCode,
-          error: promoError.message
-        });
-        return res.status(500).json({ error: 'Não foi possível validar o código promocional. Tente novamente em instantes.' });
+      } else {
+        try {
+          const promotionCodes = await stripe.promotionCodes.list({
+            code: normalizedInputCode,
+            active: true,
+            limit: 1
+          });
+
+          if (!promotionCodes.data.length) {
+            logger.warn('Código promocional inválido ou expirado.', {
+              requestId: req.requestId,
+              promoCode
+            });
+            return res.status(400).json({ error: 'Código promocional inválido ou expirado.' });
+          }
+
+          promotionCodeId = promotionCodes.data[0].id;
+          normalizedPromoCode = promotionCodes.data[0].code;
+
+          logger.info('Código promocional aplicado com sucesso.', {
+            requestId: req.requestId,
+            promotionCodeId,
+            code: normalizedPromoCode
+          });
+        } catch (promoError) {
+          logger.error('Erro ao validar código promocional.', {
+            requestId: req.requestId,
+            promoCode,
+            error: promoError.message
+          });
+          return res.status(500).json({ error: 'Não foi possível validar o código promocional. Tente novamente em instantes.' });
+        }
       }
     }
 
@@ -540,7 +646,7 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
         price_data: {
           currency: 'brl',
           product_data: { name: product.name },
-          unit_amount: product.price,
+          unit_amount: unitAmount,
         },
         quantity: 1,
       }],
@@ -564,6 +670,11 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
 
     if (normalizedPromoCode) {
       sessionParams.metadata.promoCode = normalizedPromoCode;
+    }
+
+    if (discountMetadata) {
+      sessionParams.metadata.originalAmountInCents = String(product.price);
+      Object.assign(sessionParams.metadata, discountMetadata, { discountSource: 'internal' });
     }
 
     // Criar a sessão no Stripe
