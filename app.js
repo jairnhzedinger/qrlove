@@ -533,17 +533,39 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
           return Number.isNaN(parsed.getTime()) ? null : parsed;
         };
 
-        const today = new Date();
-        today.setUTCHours(0, 0, 0, 0);
+        const now = new Date();
         const startDateLimit = parseDateOnly(localCoupon.start_date);
         const endDateLimit = parseDateOnly(localCoupon.end_date);
+
+        const normalizeToStartOfDayUtc = value => {
+          if (!value) {
+            return null;
+          }
+
+          const copy = new Date(value.getTime());
+          copy.setUTCHours(0, 0, 0, 0);
+          return copy;
+        };
+
+        const normalizeToEndOfDayUtc = value => {
+          if (!value) {
+            return null;
+          }
+
+          const copy = new Date(value.getTime());
+          copy.setUTCHours(23, 59, 59, 999);
+          return copy;
+        };
+
+        const startBoundary = normalizeToStartOfDayUtc(startDateLimit);
+        const endBoundary = normalizeToEndOfDayUtc(endDateLimit);
         const discountValue = Number(localCoupon.discount_value);
         const usageLimit = localCoupon.usage_limit;
         const usedCount = localCoupon.used_count || 0;
 
         const isInactive = localCoupon.active !== 1;
-        const isBeforeStart = startDateLimit && startDateLimit > today;
-        const isAfterEnd = endDateLimit && endDateLimit < today;
+        const isBeforeStart = startBoundary && startBoundary > now;
+        const isAfterEnd = endBoundary && endBoundary < now;
         const exceededUsage = usageLimit !== null && usageLimit !== undefined && usedCount >= usageLimit;
         const invalidDiscountValue = Number.isNaN(discountValue) || discountValue <= 0;
 
