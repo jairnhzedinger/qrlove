@@ -4,10 +4,11 @@ const dotenv = require('dotenv');
 const path = require('path');
 const crypto = require('crypto'); // Para gerar a hash única
 const multer = require('multer'); // Biblioteca para upload de arquivos
-const db = require('./db'); // Importar o módulo db.js
 const bodyParser = require('body-parser');
 const QRCode = require('qrcode'); // Biblioteca para gerar QR Codes
 const sharp = require('sharp'); // Biblioteca para manipulação de imagens
+const db = require('./db'); // Importar o módulo db.js
+const logger = require('./logger');
 
 // Carregar variáveis de ambiente
 dotenv.config();
@@ -16,23 +17,58 @@ dotenv.config();
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const app = express();
 
+// Middlewares de logging e identificação de requisições
+app.use((req, res, next) => {
+  if (!req.requestId) {
+    const idGenerator = crypto.randomUUID || (() => crypto.randomBytes(16).toString('hex'));
+    req.requestId = idGenerator();
+  }
+  res.locals.requestId = req.requestId;
+  next();
+});
+
+app.use((req, res, next) => {
+  logger.info('Requisição recebida.', {
+    requestId: req.requestId,
+    method: req.method,
+    path: req.originalUrl
+  });
+
+  res.on('finish', () => {
+    logger.info('Requisição finalizada.', {
+      requestId: req.requestId,
+      statusCode: res.statusCode
+    });
+  });
+
+  next();
+});
+
+// Configurar parser JSON apenas para rotas que não sejam webhook
+const jsonParser = express.json({ limit: '1mb' });
+app.use((req, res, next) => {
+  if (req.originalUrl.startsWith('/webhook')) {
+    return next();
+  }
+
+  return jsonParser(req, res, next);
+});
+
 // Configurações
 app.use(express.static(path.join(__dirname, 'public'))); // Servir arquivos estáticos (CSS, imagens)
 app.set('view engine', 'ejs'); // Configurar EJS como engine de templates
-app.use(express.json()); // Permitir parsing de JSON
 
-// Middleware para tratar payloads de Webhook em formato raw
-app.use(bodyParser.raw({ type: 'application/json' }));
-
-// Logging básico
-console.log("Servidor iniciado.");
+logger.info('Servidor iniciado.');
 
 // Enviar a chave pública para o frontend
 app.get('/config', (req, res) => {
   try {
     res.json({ publicKey: process.env.STRIPE_PUBLISHABLE_KEY });
   } catch (error) {
-    console.error("Erro ao enviar chave pública:", error.message);
+    logger.error('Erro ao enviar chave pública.', {
+      requestId: req.requestId,
+      error: error.message
+    });
     res.status(500).json({ error: 'Erro ao obter a chave pública.' });
   }
 });
@@ -59,10 +95,13 @@ const upload = multer({ storage }); // Inicializar o multer com a configuração
 // Rota padrão /
 app.get('/', (req, res) => {
   try {
-    console.log("Requisição para /");
+    logger.info('Renderizando página inicial.', { requestId: req.requestId });
     res.render('index');
   } catch (error) {
-    console.error("Erro ao renderizar a página inicial:", error.message);
+    logger.error('Erro ao renderizar a página inicial.', {
+      requestId: req.requestId,
+      error: error.message
+    });
     res.status(500).send("Erro ao carregar a página.");
   }
 });
@@ -70,11 +109,16 @@ app.get('/', (req, res) => {
 // Endpoint de criação de sessão de checkout, incluindo upload da imagem
 app.post('/create-checkout-session', upload.single('photo'), async (req, res) => {
   try {
-    console.log("Requisição para /create-checkout-session");
+    logger.info('Requisição para /create-checkout-session.', { requestId: req.requestId });
     const { coupleName, planId, startDate } = req.body; // Dados do formulário
     const photoFile = req.file; // Arquivo da imagem enviada
 
-    console.log("Dados recebidos:", { coupleName, planId, startDate });
+    logger.info('Dados recebidos para criação de sessão.', {
+      requestId: req.requestId,
+      coupleName,
+      planId,
+      startDate
+    });
 
     const products = [
       { id: 1, name: 'Anual', price: 1990 },
@@ -84,7 +128,10 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
     const product = products.find(p => p.id === Number(planId));
 
     if (!product) {
-      console.error(`Plano não encontrado com ID ${planId}`);
+      logger.warn('Plano não encontrado.', {
+        requestId: req.requestId,
+        planId
+      });
       return res.status(404).json({ error: 'Plano não encontrado' });
     }
 
@@ -115,10 +162,13 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
       },
     });
 
-    console.log("Sessão de checkout criada:", session.id);
+    logger.info('Sessão de checkout criada.', {
+      requestId: req.requestId,
+      sessionId: session.id
+    });
 
     // Salvar a compra no banco de dados e garantir que o ID da compra seja retornado
-    console.log("Iniciando o salvamento da compra no banco de dados...");
+    logger.info('Iniciando salvamento da compra.', { requestId: req.requestId });
 
     const purchase = await db.createRecord('purchases', {
       couple_name: coupleName,
@@ -133,7 +183,10 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
       throw new Error("Falha ao inserir a compra no banco de dados. ID não retornado.");
     }
 
-    console.log(`Compra salva com sucesso. ID da compra: ${purchase.id}`);
+    logger.info('Compra salva com sucesso.', {
+      requestId: req.requestId,
+      purchaseId: purchase.id
+    });
 
     // Verificar se a imagem foi enviada
     if (photoFile) {
@@ -141,7 +194,10 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
 
       // Salvar a imagem original na tabela 'images'
       try {
-        console.log("Salvando imagem original no banco de dados...");
+        logger.info('Salvando imagem original no banco de dados.', {
+          requestId: req.requestId,
+          purchaseId: purchase.id
+        });
 
         const imageRecord = await db.createRecord('images', {
           purchase_id: purchase.id,
@@ -152,15 +208,25 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
           throw new Error("Falha ao salvar a imagem original no banco de dados.");
         }
 
-        console.log(`Imagem original salva com sucesso na tabela 'images' para a compra ID: ${purchase.id}, URL: ${originalImageUrl}`);
+        logger.info('Imagem original salva com sucesso.', {
+          requestId: req.requestId,
+          purchaseId: purchase.id,
+          imageUrl: originalImageUrl
+        });
       } catch (imageError) {
-        console.error("Erro ao salvar a imagem original no banco de dados:", imageError.message);
+        logger.error('Erro ao salvar a imagem original no banco de dados.', {
+          requestId: req.requestId,
+          error: imageError.message
+        });
         throw new Error("Erro ao salvar a imagem original no banco de dados.");
       }
 
       // Processar a imagem e adicionar o QR Code
       try {
-        console.log("Iniciando processamento da imagem com QR Code...");
+        logger.info('Iniciando processamento da imagem.', {
+          requestId: req.requestId,
+          purchaseId: purchase.id
+        });
 
         const qrUrl = `${process.env.BASE_URL}/pages/${encodeURIComponent(coupleName)}-${encodeURIComponent(uniqueHash)}`;
 
@@ -183,18 +249,29 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
           image_url: `/media/edit/processed-${photoFile.filename}`
         });
 
-        console.log(`Imagem com QR Code salva com sucesso na tabela 'imagesEdit' para a compra ID: ${purchase.id}`);
+        logger.info('Imagem com QR Code salva com sucesso.', {
+          requestId: req.requestId,
+          purchaseId: purchase.id
+        });
       } catch (imageError) {
-        console.error("Erro ao salvar a imagem com QR Code no banco de dados:", imageError.message);
+        logger.error('Erro ao processar a imagem com QR Code.', {
+          requestId: req.requestId,
+          error: imageError.message
+        });
         throw new Error("Erro ao salvar a imagem com QR Code no banco de dados.");
       }
     } else {
-      console.warn("Nenhuma imagem enviada ou falha ao processar a imagem.");
+      logger.warn('Nenhuma imagem enviada ou falha ao processar a imagem.', {
+        requestId: req.requestId
+      });
     }
 
     res.json({ id: session.id });
   } catch (error) {
-    console.error("Erro ao criar sessão de checkout:", error.message);
+    logger.error('Erro ao criar sessão de checkout.', {
+      requestId: req.requestId,
+      error: error.message
+    });
     res.status(500).json({ error: "Erro ao criar sessão de checkout. Por favor, tente novamente." });
   }
 });
@@ -203,7 +280,7 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
 
 
 // Webhook para receber eventos da Stripe
-app.post('/webhook', (req, res) => {
+app.post('/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) => {
   const sig = req.headers['stripe-signature'];
   const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -213,18 +290,20 @@ app.post('/webhook', (req, res) => {
     // Verificar e construir o evento com a assinatura
     event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
   } catch (err) {
-    console.error(`Erro de verificação de webhook: ${err.message}`);
+    logger.error('Erro de verificação de webhook.', {
+      error: err.message
+    });
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   // Processar diferentes tipos de eventos que você deseja capturar
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
-    console.log(`Pagamento realizado com sucesso para sessão ${session.id}`);
+    logger.info('Pagamento realizado com sucesso.', { sessionId: session.id });
     // Atualizar o banco de dados com o status do pagamento, caso necessário
   } else if (event.type === 'invoice.payment_succeeded') {
     const invoice = event.data.object;
-    console.log(`Pagamento de boleto realizado com sucesso para invoice ${invoice.id}`);
+    logger.info('Pagamento de boleto realizado com sucesso.', { invoiceId: invoice.id });
     // Atualizar o status de pagamento no banco de dados aqui
   }
 
@@ -241,6 +320,11 @@ app.get('/success/:coupleName-:hash', async (req, res) => {
     const purchase = await db.getRecord('purchases', { couple_name: coupleName, unique_hash: hash });
 
     if (!purchase) {
+      logger.warn('Compra não encontrada durante acesso à página de sucesso.', {
+        requestId: req.requestId,
+        coupleName,
+        hash
+      });
       return res.status(404).send('Compra não encontrada.');
     }
 
@@ -257,7 +341,10 @@ app.get('/success/:coupleName-:hash', async (req, res) => {
       qrImageUrl: qrImageUrl // Passando a URL da imagem para o template
     });
   } catch (error) {
-    console.error("Erro ao buscar os dados da compra:", error.message);
+    logger.error('Erro ao buscar os dados da compra para página de sucesso.', {
+      requestId: req.requestId,
+      error: error.message
+    });
     res.status(500).send('Erro ao processar sua requisição.');
   }
 });
@@ -272,6 +359,11 @@ app.get('/pages/:coupleName-:hash', async (req, res) => {
     const purchase = await db.getRecord('purchases', { couple_name: coupleName, unique_hash: hash });
 
     if (!purchase) {
+      logger.warn('Página personalizada não encontrada.', {
+        requestId: req.requestId,
+        coupleName,
+        hash
+      });
       return res.status(404).send('Página personalizada não encontrada.');
     }
 
@@ -287,7 +379,10 @@ app.get('/pages/:coupleName-:hash', async (req, res) => {
       imageUrl: imageUrl // Passar a URL da imagem para o template
     });
   } catch (error) {
-    console.error("Erro ao buscar os dados da compra:", error.message);
+    logger.error('Erro ao buscar dados para página personalizada.', {
+      requestId: req.requestId,
+      error: error.message
+    });
     res.status(500).send('Erro ao processar sua requisição.');
   }
 });
@@ -297,17 +392,24 @@ app.get('/cancel', (req, res) => {
   try {
     res.send('Pagamento cancelado.');
   } catch (error) {
-    console.error("Erro ao carregar a página de cancelamento:", error.message);
+    logger.error('Erro ao carregar a página de cancelamento.', {
+      requestId: req.requestId,
+      error: error.message
+    });
     res.status(500).send('Erro ao processar sua requisição.');
   }
 });
 
 // Iniciar o servidor
 const PORT = process.env.PORT || 7500;
-app.listen(PORT, () => {
-  try {
-    console.log(`Servidor rodando na porta ${PORT}`);
-  } catch (error) {
-    console.error("Erro ao iniciar o servidor:", error.message);
-  }
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    try {
+      logger.info('Servidor rodando.', { port: PORT });
+    } catch (error) {
+      logger.error('Erro ao iniciar o servidor.', { error: error.message });
+    }
+  });
+}
+
+module.exports = app;
