@@ -5,73 +5,233 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>A história de <%= coupleName %></title>
   <style>
+    :root {
+      color-scheme: light;
+      font-family: 'Poppins', 'Arial', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
-      font-family: 'Arial', sans-serif;
-      background: url('/media/bg.png') no-repeat center center fixed;
-      background-size: cover;
-      background-color: rgba(0, 0, 0, 0.5); /* Um fundo transparente por trás da imagem */
-      color: #333;
-      text-align: center;
-      padding: 50px;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at top, rgba(255, 94, 94, 0.12), transparent 60%), url('/media/bg.png') center/cover no-repeat fixed;
       position: relative;
+      padding: 32px 16px 48px;
+      color: #2d2222;
     }
 
     body::before {
-      content: "";
+      content: '';
       position: absolute;
-      top: 0;
-      left: 0;
+      inset: 0;
+      background: rgba(255, 255, 255, 0.86);
+      backdrop-filter: blur(4px);
+      z-index: 0;
+    }
+
+    main {
+      position: relative;
+      z-index: 1;
       width: 100%;
-      height: 100%;
-      background-color: rgba(255, 255, 255, 0.664); /* Camada de opacidade sobre a imagem */
-      z-index: -1; /* Enviar a camada para trás do conteúdo */
-      border-radius: 20px;
+      max-width: 960px;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 28px;
+      padding: 40px 32px;
+      box-shadow: 0 24px 60px rgba(255, 94, 94, 0.25);
+      border: 1px solid rgba(255, 94, 94, 0.12);
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 32px;
+    }
+
+    header {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
     }
 
     h1 {
       color: #ff5e5e;
-      margin-bottom: 20px;
+      font-size: 2.4rem;
+      line-height: 1.2;
     }
 
     .details {
-      font-size: 1.2rem;
-      margin-top: 20px;
+      font-size: 1rem;
+      color: #5d4a4f;
     }
 
-    img {
+    figure {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      align-items: center;
+    }
+
+    figure img {
       max-width: 100%;
-      height: auto;
-      border-radius: 10px;
-      margin-top: 20px;
+      border-radius: 20px;
+      box-shadow: 0 24px 40px rgba(0, 0, 0, 0.18);
+      border: 10px solid rgba(255, 94, 94, 0.12);
+    }
+
+    figcaption {
+      font-size: 0.95rem;
+      color: #826a6d;
     }
 
     .countdown {
-      margin-top: 30px;
-      font-size: 1.5rem;
-      color: #555;
+      margin-top: 16px;
+      font-size: 1.1rem;
+      color: #4a3a3d;
+      font-weight: 600;
+      background: linear-gradient(135deg, rgba(255, 94, 94, 0.08), rgba(255, 188, 188, 0.16));
+      border-radius: 18px;
+      padding: 18px 20px;
+      border: 1px solid rgba(255, 94, 94, 0.16);
+    }
+
+    .countdown small {
+      display: block;
+      text-transform: uppercase;
+      letter-spacing: 1.4px;
+      font-size: 0.75rem;
+      color: #ff5e5e;
+      margin-bottom: 4px;
+    }
+
+    footer {
+      grid-column: 1 / -1;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #7a6467;
+    }
+
+    footer a {
+      color: #ff5e5e;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 860px) {
+      main {
+        grid-template-columns: 1fr;
+        text-align: center;
+        padding: 32px 24px;
+      }
+
+      header {
+        align-items: center;
+      }
+
+      h1 {
+        font-size: 2rem;
+      }
+
+      .countdown {
+        margin-left: auto;
+        margin-right: auto;
+      }
+    }
+
+    @media (max-width: 560px) {
+      body {
+        padding: 24px 12px 40px;
+      }
+
+      main {
+        border-radius: 22px;
+        padding: 28px 18px;
+      }
+
+      h1 {
+        font-size: 1.8rem;
+      }
+
+      figure img {
+        border-width: 6px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>A história de <%= coupleName %>!</h1>
+  <main>
+    <header>
+      <h1>A história de <%= coupleName %>!</h1>
+      <p class="details">Este espaço foi criado para guardar cada memória especial do casal. Compartilhe o link e volte sempre que quiser reviver esses momentos.</p>
+    </header>
 
-  <!-- Exibição da imagem do casal -->
-  <% if (imageUrl) { %>
-    <img src="<%= imageUrl %>" alt="Foto de <%= coupleName %>">
-  <% } %>
+    <figure>
+      <% if (imageUrl) { %>
+        <img src="<%= imageUrl %>" alt="Foto de <%= coupleName %>">
+        <figcaption>Uma lembrança que agora tem QR Code e contador exclusivo.</figcaption>
+      <% } else { %>
+        <figcaption>Envie uma foto para completar esta história.</figcaption>
+      <% } %>
+    </figure>
 
-  <!-- Contador de tempo juntos -->
-  <div class="countdown" id="countdown"></div>
+    <section class="countdown" id="countdown">
+      <small>Tempo juntos</small>
+      Calculando cada segundo dessa história de amor…
+    </section>
+
+    <footer>
+      <p>QRLove — mantenha vivo o brilho do relacionamento. Precisa de ajuda? Fale com a gente pelo <a href="mailto:contato@qrlove.com">contato@qrlove.com</a>.</p>
+    </footer>
+  </main>
 
   <script>
-    // Defina a data inicial com base nos dados do servidor
-    const startDate = new Date('<%= startDate %>');
+    const countdownElement = document.getElementById('countdown');
+    const startDate = parseStartDate('<%= startDate %>');
+
+    function parseStartDate(value) {
+      if (!value) return null;
+      const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (isoMatch) {
+        const year = Number(isoMatch[1]);
+        const month = Number(isoMatch[2]) - 1;
+        const day = Number(isoMatch[3]);
+        return new Date(year, month, day);
+      }
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
 
     function updateCountdown() {
-      const now = new Date();
-      const elapsed = now - startDate; // Tempo decorrido em milissegundos
+      if (!startDate) {
+        countdownElement.innerHTML = '<small>Tempo juntos</small>Escolha uma data especial para começarmos a contagem.';
+        return;
+      }
 
-      // Calcule anos, meses, dias, horas, minutos e segundos
+      const now = new Date();
+      const elapsed = now.getTime() - startDate.getTime();
+
+      if (elapsed < 0) {
+        countdownElement.innerHTML = '<small>Tempo juntos</small>Estamos aguardando a data escolhida chegar para começar a contar!';
+        return;
+      }
+
       const years = Math.floor(elapsed / (1000 * 60 * 60 * 24 * 365.25));
       const months = Math.floor((elapsed % (1000 * 60 * 60 * 24 * 365.25)) / (1000 * 60 * 60 * 24 * 30.44));
       const days = Math.floor((elapsed % (1000 * 60 * 60 * 24 * 30.44)) / (1000 * 60 * 60 * 24));
@@ -79,14 +239,10 @@
       const minutes = Math.floor((elapsed % (1000 * 60 * 60)) / (1000 * 60));
       const seconds = Math.floor((elapsed % (1000 * 60)) / 1000);
 
-      // Atualize o contador na página
-      document.getElementById('countdown').innerHTML = `
-        <h2>Tempo juntos:</h2>
-        <p>${years} anos, ${months} meses, ${days} dias, ${hours} horas, ${minutes} minutos, ${seconds} segundos</p>
-      `;
+      countdownElement.innerHTML = `<small>Tempo juntos</small>${years} anos, ${months} meses, ${days} dias, ${hours} horas, ${minutes} minutos, ${seconds} segundos`;
     }
 
-    // Atualiza o contador a cada segundo
+    updateCountdown();
     setInterval(updateCountdown, 1000);
   </script>
 </body>
