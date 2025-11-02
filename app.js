@@ -232,15 +232,58 @@ app.post('/create-checkout-session', upload.single('photo'), async (req, res) =>
 
         // Primeiro, obtenha as dimensões da imagem para calcular o tamanho proporcional do QR code
         const imageMetadata = await sharp(photoFile.path).metadata();
-        const qrCodeSize = Math.min(imageMetadata.width, imageMetadata.height) * 0.2; // Tamanho proporcional ao menor lado da imagem (20%)
+        const measuredSides = [imageMetadata.width, imageMetadata.height].filter(
+          (value) => typeof value === 'number' && value > 0
+        );
+        const minSide = measuredSides.length > 0 ? Math.min(...measuredSides) : 600;
+        const qrCodeSize = Math.max(Math.round(minSide * 0.2), 120); // Tamanho proporcional ao menor lado da imagem (20%)
 
-        const qrCodeBuffer = await QRCode.toBuffer(qrUrl, { width: qrCodeSize });
+        const coloredQrCode = await QRCode.toBuffer(qrUrl, {
+          width: qrCodeSize,
+          color: {
+            dark: '#ff3366',
+            light: '#00000000'
+          }
+        });
+
+        const qrPadding = Math.round(Math.max(qrCodeSize * 0.18, 18));
+        const stylizedSize = Math.round(qrCodeSize + qrPadding * 2);
+        const cornerRadius = Math.round(stylizedSize * 0.22);
+        const gradientSvg = Buffer.from(
+          `<svg width="${stylizedSize}" height="${stylizedSize}" viewBox="0 0 ${stylizedSize} ${stylizedSize}" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="qrGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#ffe3ec" />
+                <stop offset="100%" stop-color="#ffc1d9" />
+              </linearGradient>
+            </defs>
+            <rect x="0" y="0" width="${stylizedSize}" height="${stylizedSize}" rx="${cornerRadius}" fill="url(#qrGradient)" />
+          </svg>`
+        );
+
+        const stylizedQrBuffer = await sharp(gradientSvg)
+          .composite([
+            {
+              input: coloredQrCode,
+              top: qrPadding,
+              left: qrPadding
+            }
+          ])
+          .png()
+          .toBuffer();
 
         // Processar a imagem com QR Code e salvar em /media/edit
         const outputFilePath = `public/media/edit/processed-${photoFile.filename}`;
         await sharp(photoFile.path)
           .rotate() // Garantir a orientação correta da imagem
-          .composite([{ input: qrCodeBuffer, gravity: 'southwest' }]) // Adicionar o QR code na posição inferior esquerda
+          .composite([
+            {
+              input: stylizedQrBuffer,
+              gravity: 'southwest',
+              dx: 40,
+              dy: 40
+            }
+          ]) // Adicionar o QR code estilizado na posição inferior esquerda
           .toFile(outputFilePath);
 
         // Salvar a imagem com QR Code na tabela 'imagesEdit'
@@ -338,7 +381,8 @@ app.get('/success/:coupleName-:hash', async (req, res) => {
       planId: purchase.plan_id,
       startDate: purchase.start_date,
       uniqueHash: purchase.unique_hash,
-      qrImageUrl: qrImageUrl // Passando a URL da imagem para o template
+      qrImageUrl: qrImageUrl, // Passando a URL da imagem para o template
+      pageUrl: `/pages/${encodeURIComponent(purchase.couple_name)}-${encodeURIComponent(purchase.unique_hash)}`
     });
   } catch (error) {
     logger.error('Erro ao buscar os dados da compra para página de sucesso.', {
